@@ -142,14 +142,60 @@ def _probe(code: str, entry: str, sample: dict, timeout_sec: float) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2:
-        return _emit({"entry_found": False, "ast_lines": {}, "probes": [],
-                      "suspicious_lines": [], "summary": "usage: analyze.py '<json>'"})
+    # Flag parsing: --code-file FILE  --entry FUNCTION  --edge-inputs-file FILE
+    code_from_file: str | None = None
+    entry_from_flag: str | None = None
+    edge_inputs_from_file: list | None = None
+    rest_argv: list[str] = []
+    i = 1
+    while i < len(argv):
+        if argv[i] == "--code-file" and i + 1 < len(argv):
+            try:
+                code_from_file = open(argv[i + 1], encoding="utf-8-sig").read()
+            except OSError as e:
+                return _emit({"entry_found": False, "ast_lines": {}, "probes": [],
+                              "suspicious_lines": [], "summary": f"--code-file error: {e}"})
+            i += 2
+        elif argv[i] == "--entry" and i + 1 < len(argv):
+            entry_from_flag = argv[i + 1]
+            i += 2
+        elif argv[i] == "--edge-inputs-file" and i + 1 < len(argv):
+            try:
+                raw = open(argv[i + 1], encoding="utf-8-sig").read()
+                edge_inputs_from_file = json.loads(raw)
+            except (OSError, json.JSONDecodeError) as e:
+                return _emit({"entry_found": False, "ast_lines": {}, "probes": [],
+                              "suspicious_lines": [], "summary": f"--edge-inputs-file error: {e}"})
+            i += 2
+        else:
+            rest_argv.append(argv[i])
+            i += 1
+
+    if code_from_file is not None and entry_from_flag is not None and edge_inputs_from_file is not None:
+        payload_str = "{}"
+    elif rest_argv:
+        payload_str = rest_argv[0]
+    else:
+        # stdin mode
+        payload_str = sys.stdin.read().strip() if not sys.stdin.isatty() else "{}"
+        if not payload_str:
+            payload_str = "{}"
+
+    if payload_str.startswith('\ufeff'):
+        payload_str = payload_str[1:]
+
     try:
-        payload = json.loads(argv[1])
+        payload = json.loads(payload_str) if payload_str.strip() else {}
     except json.JSONDecodeError as e:
-        return _emit({"entry_found": False, "ast_lines": {}, "probes": [],
-                      "suspicious_lines": [], "summary": f"argv JSON invalid: {e}"})
+        payload = {}
+
+    # Flags override JSON payload
+    if code_from_file is not None:
+        payload["code"] = code_from_file
+    if entry_from_flag is not None:
+        payload["entry_function"] = entry_from_flag
+    if edge_inputs_from_file is not None:
+        payload["edge_inputs"] = edge_inputs_from_file
 
     code = str(payload.get("code", ""))
     entry = str(payload.get("entry_function", ""))

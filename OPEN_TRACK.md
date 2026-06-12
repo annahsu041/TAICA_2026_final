@@ -6,28 +6,39 @@
 
 ## 1. Skill 簡介
 
-(一句話說明你的 skill 做什麼。)
+這個 Skill 能夠根據自然語言描述、預期匹配的 Positive 測試案例與不應匹配的 Negative 測試案例，自動生成並驗證符合 Python 語法的 Regular Expression (正規表示式)。
 
 ## 2. Skill 名稱與目錄
 
-(你的 skill 在 repo 中的路徑,例如 `skills/open-mytool-<github_id>/`。)
+路徑：`skills/open-regex-annahsu041/`
 
 ## 3. 呼叫方式
 
-(評分環境要如何以 `hermes chat -q` 呼叫你的 skill。需包含:slash command、輸入 JSON 範例、預期輸出 JSON schema 範例。請寫到「照著就能跑」的程度。)
+評分環境可以透過傳入包含任務描述、Positive 範例列表與 Negative 範例列表的 JSON payload 來呼叫該 Skill。
 
 **Slash command:**
 
 ```
-/open-<short-name>-<github_id>
+/open-regex-annahsu041
 ```
 
 **輸入 JSON 範例:**
 
 ```json
 {
-  "task_id": "open_example_001",
-  "input": "..."
+  "task_id": "regex_ip_01",
+  "description": "Matches a standard IPv4 address consisting of four octets (0-255) separated by dots.",
+  "positive_examples": [
+    "192.168.1.1",
+    "0.0.0.0",
+    "255.255.255.255"
+  ],
+  "negative_examples": [
+    "256.100.0.1",
+    "192.168.1",
+    "abc.def.ghi.jkl",
+    "1.2.3.4.5"
+  ]
 }
 ```
 
@@ -35,43 +46,60 @@
 
 ```json
 {
-  "task_id": "open_example_001",
-  "result": "...",
-  "confidence": 0.0
+  "task_id": "regex_ip_01",
+  "regex": "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
+  "rationale": "Uses non-capturing groups to validate that each of the four dot-separated fields is a number in range 0-255.",
+  "confidence": 0.95
 }
 ```
 
 ## 4. 自定 Verifiable Scenario
 
-(你用什麼 scenario 證明 skill 有效?評分 metric 是什麼?並論證此 metric 為何不可 gameable —— 例如結果可程式化比對、有 ground truth、無法靠亂猜取分。)
+此正規表示式生成 Skill 採用完全確定性的測試機制，確保評分指標 (Metric) 無法被惡意欺騙或寫死 (non-gameable)。
 
 **Scenarios(請提供至少 3 個):**
 
-- Scenario 1: ...
-- Scenario 2: ...
-- Scenario 3: ...
+- **Scenario 1: IPv4 Address Validation**
+  * Description: Matches a standard IPv4 address consisting of four octets (0-255) separated by dots.
+  * Positives: `["192.168.1.1", "0.0.0.0", "255.255.255.255"]`
+  * Negatives: `["256.100.0.1", "192.168.1", "abc.def.ghi.jkl", "1.2.3.4.5"]`
+- **Scenario 2: Simple Hex Color Code**
+  * Description: Matches a 3 or 6 digit hex color code starting with a hash symbol (#).
+  * Positives: `["#abc", "#ABC000", "#FFF"]`
+  * Negatives: `["abc", "#12", "#GGGGGG", "#12345"]`
+- **Scenario 3: Standard 24-hour Time Format**
+  * Description: Matches time in 24-hour HH:MM format (from 00:00 to 23:59).
+  * Positives: `["14:30", "00:00", "23:59", "09:05"]`
+  * Negatives: `["24:00", "12:60", "9:05", "14:3", "ab:cd"]`
 
-**Metric:** (描述評分器如何從輸出 JSON 自動算出分數,例如「`result` 欄位以 bag equality 比對 ground truth」或「以 SHA256 比對固定 reference output」。)
+**Metric:**
+評分時，評分器會對產出的 `regex` 進行編譯測試（使用 python `re.compile`），接著將其與測試用例（含 perturbations 變體用例）逐一比對。只有在 **所有正向用例皆成功匹配** 且 **所有反向用例皆不匹配** 的情況下，該 Task 才被判定為 PASS。
 
-**為何不可 gameable:** (例如:ground truth 對學生不可見、staff perturbation 後仍可重現、無法靠關鍵字 / hardcoded 答案取分。)
+**為何不可 gameable:**
+1. 正向與反向測試用例會加入由評分器產生的動態干擾項 (perturbations，例如隨機的合法/非法時間、IP、十六進位值)。
+2. 只回傳靜態、寫死的 regex 無法應對干擾項，必須根據描述學會正確規則才能全數匹配。
+3. 若 regex 無法編譯，評分器會直接判為失敗。
 
 ## 5. 預期失敗模式
 
-(列出至少 2 種預期會遇到的失敗。可參考規格書 §4.4 MAST taxonomy 的詞彙,說明觸發點與處理方式。)
-
-- 失敗 1: ...(觸發點 / 處理)
-- 失敗 2: ...(觸發點 / 處理)
+- **失敗 1：邊界用例考慮不周 (MAST 類別: (3) 驗證與品質)**
+  * 觸發點：LLM 生成的 regex 在語法上合法，但未能正確限縮邊界（例如 hex color 接受了 `#GGGGGG`）。
+  * 處理方式：Skill 內的 Procedure 要求執行 `validate_regex.py`，若有失敗用例，會將具體失敗的項目回傳給 LLM 並指示進行最多 3 次 retry。
+- **失敗 2：轉義字元遺漏或 JSON 解析失敗 (MAST 類別: (3) 驗證與品質)**
+  * 觸發點：LLM 生成的 regex 中包含 `\` 卻未能正確進行雙重轉義，導致在 `run.py` 封裝輸出 JSON 時拋出 JSONDecodeError。
+  * 處理方式：`run.py` 與 `validate_regex.py` 腳本皆使用防禦性 `try-except` 包裝，若發生 decode/parse 錯誤，亦會回傳確定性錯誤格式 JSON，引導 LLM 在 Procedure 的迴圈中修正。
 
 ## 6. 互動對象
 
-(你的 skill 會跟誰互動?可以是 staff reference skill、Basic/Pairwise 的 skill,或其他同學的 skill(需雙方都宣告)。若需多步自主推理而用了 Hermes subagent,請在此說明 subagent 的觸發條件與終止條件。)
+本 Skill 為 stateless 獨立任務，運作時無需呼叫其他外部 Agent 或外部 MCP，僅需在 Procedure 中呼叫本地端的確定性測試與封裝腳本：
+- `scripts/validate_regex.py`
+- `scripts/run.py`
 
 ## 7. Token Budget 估算
 
-(預估每個 scenario 的 token 消耗。若 > 50k tokens/scenario,請附理由。)
-
 | Scenario | 預估 input tokens | 預估 output tokens | 預估 total |
 |---|---:|---:|---:|
-| Scenario 1 | | | |
-| Scenario 2 | | | |
-| Scenario 3 | | | |
+| Scenario 1: IPv4 Address | 1,500 | 800 | 2,300 |
+| Scenario 2: Simple Hex Color | 1,500 | 800 | 2,300 |
+| Scenario 3: 24-hour Time Format | 1,500 | 800 | 2,300 |
+

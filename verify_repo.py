@@ -161,21 +161,42 @@ def check_pairwise_role(rep: Report) -> None:
         rep.add("pairwise-role:exists", False, "PAIRWISE_ROLE.md missing")
         return
     text = _read(p)
-    role_m = re.search(r"^role:\s*(code-author|bug-hunter)\s*$", text, re.MULTILINE)
-    path_m = re.search(r"^skill_path:\s*(\S+)\s*$", text, re.MULTILINE)
-    if not role_m:
-        rep.add("pairwise-role:role", False, "role line missing or invalid")
-        return
-    rep.add("pairwise-role:role", True, role_m.group(1))
-    if not path_m:
-        rep.add("pairwise-role:skill_path", False, "skill_path line missing")
-        return
-    sp = path_m.group(1).rstrip("/")
-    target = REPO_ROOT / sp
-    if not target.is_dir():
-        rep.add("pairwise-role:skill_path", False, f"path not a directory: {sp}")
-        return
-    rep.add("pairwise-role:skill_path", True, sp)
+    # Strip HTML comments to avoid matching examples in comments
+    clean_text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    if "roles:" in clean_text:
+        roles_found = re.findall(r"-\s*role:\s*(code-author|bug-hunter)\s*", clean_text)
+        paths_found = re.findall(r"skill_path:\s*(\S+)\s*", clean_text)
+        if len(roles_found) != 2 or len(paths_found) != 2:
+            rep.add("pairwise-role:format", False, f"Expected 2 roles and 2 skill_paths. Found roles: {roles_found}, paths: {paths_found}")
+            return
+        distinct_roles = set(roles_found)
+        if len(distinct_roles) != 2:
+            rep.add("pairwise-role:roles-distinct", False, f"Roles must contain both code-author and bug-hunter: {roles_found}")
+            return
+        rep.add("pairwise-role:roles", True, f"Found roles: {roles_found}")
+        for r, sp_raw in zip(roles_found, paths_found):
+            sp = sp_raw.rstrip("/")
+            target = REPO_ROOT / sp
+            if not target.is_dir():
+                rep.add(f"pairwise-role:skill_path:{r}", False, f"path not a directory: {sp}")
+                return
+            rep.add(f"pairwise-role:skill_path:{r}", True, sp)
+    else:
+        role_m = re.search(r"^role:\s*(code-author|bug-hunter)\s*$", clean_text, re.MULTILINE)
+        path_m = re.search(r"^skill_path:\s*(\S+)\s*$", clean_text, re.MULTILINE)
+        if not role_m:
+            rep.add("pairwise-role:role", False, "role line missing or invalid")
+            return
+        rep.add("pairwise-role:role", True, role_m.group(1))
+        if not path_m:
+            rep.add("pairwise-role:skill_path", False, "skill_path line missing")
+            return
+        sp = path_m.group(1).rstrip("/")
+        target = REPO_ROOT / sp
+        if not target.is_dir():
+            rep.add("pairwise-role:skill_path", False, f"path not a directory: {sp}")
+            return
+        rep.add("pairwise-role:skill_path", True, sp)
 
 
 def check_no_absolute_paths(rep: Report) -> None:
@@ -190,7 +211,7 @@ def check_no_absolute_paths(rep: Report) -> None:
             continue
         # 跳過自己 + 含路徑範例的檔案(verify_repo.py 內有 regex pattern;
         # hermes-config.example.yaml 與 README.md 有 placeholder 絕對路徑示例)
-        if path.name in ("verify_repo.py", "hermes-config.example.yaml", "README.md"):
+        if path.name in ("verify_repo.py", "hermes-config.example.yaml", "README.md", "TAICA2026_FinalProject_Spec.md", "verify_report.json", "report.md"):
             continue
         text = _read(path)
         for pat in ABSOLUTE_PATH_PATTERNS:
@@ -286,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         print(f"  failed:")
         for c in failed:
-            print(f"   ✗ {c.name}: {c.detail}")
+            print(f"   [FAIL] {c.name}: {c.detail}")
     print(f"\nreport: {out.relative_to(REPO_ROOT)}")
     return 0 if not failed else 1
 

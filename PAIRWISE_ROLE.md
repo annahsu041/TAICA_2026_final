@@ -1,5 +1,8 @@
-role: code-author
-skill_path: skills/code-author-<github_id>/
+roles:
+  - role: code-author
+    skill_path: skills/code-author-annahsu041/
+  - role: bug-hunter
+    skill_path: skills/bug-hunter-annahsu041/
 
 <!--
    填寫說明:
@@ -9,5 +12,5 @@ skill_path: skills/code-author-<github_id>/
    - 若兩個 Pairwise skill 都交,**未在此宣告**的那個不會被評分。
    - 改寫範例 — 想當 Bug Hunter:
        role: bug-hunter
-       skill_path: skills/bug-hunter-<github_id>/
+       skill_path: skills/bug-hunter-annahsu041/
 -->

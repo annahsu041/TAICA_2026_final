@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-ST_PATH = REPO_ROOT / "skills" / "code-author-GITHUBID" / "scripts" / "selftest.py"
+ST_PATH = REPO_ROOT / "skills" / "code-author-annahsu041" / "scripts" / "selftest.py"
 
 
 def _load():

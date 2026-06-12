@@ -83,10 +83,34 @@ def emit_contract(obj: dict) -> int:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 2:
-        return emit_contract({"task_id": "", "verdict": "clean", "bugs": [], "confidence": 0.0})
+    file_path: str | None = None
+    i = 1
+    rest_argv = []
+    while i < len(argv):
+        if argv[i] == "--file" and i + 1 < len(argv):
+            file_path = argv[i+1]
+            i += 2
+        else:
+            rest_argv.append(argv[i])
+            i += 1
+
+    if file_path is not None:
+        try:
+            payload_str = open(file_path, encoding="utf-8-sig").read()
+        except OSError as e:
+            return emit_contract({"task_id": "", "verdict": "clean", "bugs": [], "confidence": 0.0})
+    elif len(rest_argv) < 1:
+        # stdin mode
+        payload_str = sys.stdin.read().strip()
+        if not payload_str:
+            return emit_contract({"task_id": "", "verdict": "clean", "bugs": [], "confidence": 0.0})
+    else:
+        payload_str = rest_argv[0]
+
+    if payload_str.startswith('\ufeff'):
+        payload_str = payload_str[1:]
     try:
-        payload = json.loads(argv[1])
+        payload = json.loads(payload_str)
         if not isinstance(payload, dict):
             raise ValueError("payload not an object")
     except (json.JSONDecodeError, ValueError):

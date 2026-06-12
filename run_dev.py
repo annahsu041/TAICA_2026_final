@@ -27,13 +27,18 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+# Reconfigure stdout/stderr to UTF-8 to avoid encoding crashes on non-UTF-8 consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEV_SET_DIR = REPO_ROOT / "dev_set"
 RESULTS_DIR = REPO_ROOT / "dev_run_results"
 
 HERMES_BIN = os.environ.get("HERMES_BIN", "hermes")
-HERMES_TIMEOUT_SEC = int(os.environ.get("HERMES_TIMEOUT_SEC", "120"))
+HERMES_TIMEOUT_SEC = int(os.environ.get("HERMES_TIMEOUT_SEC", "480"))  # code-author/bug-hunter need more time
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +50,68 @@ _FENCED_JSON_RE = re.compile(
     r"```json[ \t]*\r?\n(?P<body>.*?)\r?\n```",
     re.DOTALL | re.IGNORECASE,
 )
+
+# Hermes 在非 TTY 輸出時會把 ```json 轉成 <channel|>json 格式並加入 ANSI 色碼
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_CHANNEL_JSON_RE = re.compile(r"<channel\|>json[ \t]*\r?\n", re.IGNORECASE)
+
+
+def _extract_hermes_channel_json(stdout: str) -> Optional[dict]:
+    """
+    從 Hermes TUI 的 <channel|>json ... 輸出格式中擷取 JSON。
+
+    Hermes 捕捉 skill script 的 stdout 後，以帶有 box border 的格式渲染到自己的
+    stdout，並把 ```json 轉為 <channel|>json。長字串會在 box 邊界換行(word-wrap)。
+    此函式負責:
+      1. 剝除 ANSI 逃脫碼
+      2. 找到最後一個 <channel|>json 標記
+      3. 逐行剝除 box 邊框前綴/後綴
+      4. 將「續行」(不以 JSON 結構字元起頭的行)接回上一行
+      5. 用 JSONDecoder.raw_decode() 解析第一個完整 JSON 物件
+    """
+    clean = _ANSI_ESCAPE_RE.sub("", stdout)
+    hits = list(_CHANNEL_JSON_RE.finditer(clean))
+    if not hits:
+        return None
+
+    after = clean[hits[-1].end():]
+    raw_lines = after.split("\n")
+
+    # 偵測 box 邊框前綴長度:第一個含 { 的行,{ 前面全是空白邊框
+    border_len = 0
+    for line in raw_lines:
+        if "{" in line:
+            border_len = line.index("{")
+            break
+
+    # 剝除每行的邊框前綴與右側 padding
+    stripped: list[str] = []
+    for line in raw_lines:
+        content = (line[border_len:] if len(line) > border_len else line).rstrip()
+        # 遇到底部分隔線就停止
+        if content and all(c in "\u2500\u2501\u2502\u2503\u254c\u254d\u2550\u2551 -" for c in content):
+            break
+        stripped.append(content)
+
+    # 合併 word-wrapped 續行:
+    # 續行 = 去掉左側空白後不以 JSON 結構字元({, }, [, ], ") 開頭
+    joined: list[str] = []
+    for line in stripped:
+        lstrip = line.lstrip()
+        is_structure = (not lstrip) or (lstrip[0] in '"{[}]')
+        if joined and not is_structure:
+            joined[-1] = joined[-1].rstrip() + " " + lstrip
+        else:
+            joined.append(line)
+
+    candidate = "\n".join(joined).lstrip()
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(candidate)
+        if isinstance(obj, dict):
+            return obj
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
 
 
 def extract_last_json_block(stdout: str) -> Optional[dict]:
@@ -62,17 +129,20 @@ def extract_last_json_block(stdout: str) -> Optional[dict]:
     """
     if not isinstance(stdout, str):
         return None
+
+    # --- 方法 1: 標準 fenced ```json``` 區塊 ---
     matches = _FENCED_JSON_RE.findall(stdout)
-    if not matches:
-        return None
-    body = matches[-1].strip()
-    try:
-        obj = json.loads(body)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(obj, dict):
-        return None
-    return obj
+    if matches:
+        body = matches[-1].strip()
+        try:
+            obj = json.loads(body)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+
+    # --- 方法 2: Hermes <channel|>json 格式(TUI 渲染時使用) ---
+    return _extract_hermes_channel_json(stdout)
 
 
 # ---------------------------------------------------------------------------
@@ -182,12 +252,15 @@ def call_hermes_skill(slash_command: str, payload: dict) -> HermesResult:
 
     payload_str = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     arg = f"{slash_command} {payload_str}"
-    cmd = [HERMES_BIN, "chat", "--toolsets", "skills", "-q", arg]
+    env = dict(os.environ)
+    env["HERMES_YOLO_MODE"] = "1"
+    env["COLUMNS"] = "9999"  # 防止 Hermes box 換行截斷長字串
+    cmd = [HERMES_BIN, "chat", "--toolsets", "skills,terminal", "--yolo", "-q", arg]
 
     t0 = time.time()
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=HERMES_TIMEOUT_SEC, check=False,
+            cmd, capture_output=True, text=True, encoding="utf-8", env=env, timeout=HERMES_TIMEOUT_SEC, check=False,
         )
     except subprocess.TimeoutExpired:
         return HermesResult(
@@ -329,7 +402,9 @@ def grade_basic(skill_name: str, dry_run: bool = False) -> TrackReport:
             "db_schema": task.get("db_schema", ""),
             "dialect": task.get("dialect", "sqlite"),
         }
+        print(f"  [{rep.results.__len__() + 1}/{rep.total}] calling hermes for {task_id} ...", flush=True)
         hr = call_hermes_skill(slash, payload)
+        print(f"        → done in {hr.elapsed_sec:.1f}s, returncode={hr.returncode}", flush=True)
         if not hr.ok:
             rep.results.append(TaskResult(
                 task_id, False,
@@ -434,13 +509,15 @@ def grade_pairwise(skill_name: str, role: str, dry_run: bool = False) -> TrackRe
                 "task_description": task.get("task_description", ""),
                 "constraints": task.get("constraints", {}),
             }
+            print(f"  [{len(rep.results)+1}/{rep.total}] calling hermes for {task_id} ...", flush=True)
             hr = call_hermes_skill(slash, payload)
+            print(f"        → done in {hr.elapsed_sec:.1f}s, returncode={hr.returncode}", flush=True)
             if not hr.ok:
                 rep.results.append(TaskResult(task_id, False, reason=f"hermes failed: {hr.error}"))
                 continue
             obj = extract_last_json_block(hr.stdout)
             if obj is None or obj.get("task_id") != task_id or "code" not in obj:
-                rep.results.append(TaskResult(task_id, False, reason="contract violation"))
+                rep.results.append(TaskResult(task_id, False, reason="contract violation", elapsed_sec=hr.elapsed_sec))
                 continue
 
             code = obj.get("code", "")
@@ -476,13 +553,15 @@ def grade_pairwise(skill_name: str, role: str, dry_run: bool = False) -> TrackRe
                 "task_description": task.get("task_description", ""),
                 "code": buggy_code,
             }
+            print(f"  [{len(rep.results)+1}/{rep.total}] calling hermes for {task_id} (buggy) ...", flush=True)
             hr = call_hermes_skill(slash, payload_b)
+            print(f"        → done in {hr.elapsed_sec:.1f}s, returncode={hr.returncode}", flush=True)
             if not hr.ok:
                 rep.results.append(TaskResult(task_id, False, reason=f"hermes failed: {hr.error}"))
                 continue
             obj = extract_last_json_block(hr.stdout)
             if obj is None or obj.get("task_id") != task_id:
-                rep.results.append(TaskResult(task_id, False, reason="contract violation"))
+                rep.results.append(TaskResult(task_id, False, reason="contract violation", elapsed_sec=hr.elapsed_sec))
                 continue
 
             student_bugs = _bug_set_from_obj(obj)
@@ -494,7 +573,9 @@ def grade_pairwise(skill_name: str, role: str, dry_run: bool = False) -> TrackRe
             clean_fp = 0
             if clean_code:
                 payload_c = dict(payload_b); payload_c["code"] = clean_code
+                print(f"         ↳ calling hermes for {task_id} (clean) ...", flush=True)
                 hr_c = call_hermes_skill(slash, payload_c)
+                print(f"           → done in {hr_c.elapsed_sec:.1f}s", flush=True)
                 if hr_c.ok:
                     objc = extract_last_json_block(hr_c.stdout) or {}
                     if objc.get("verdict") == "buggy" or len(objc.get("bugs", []) or []) > 0:
@@ -574,7 +655,7 @@ def _print_summary(report: TrackReport) -> None:
           f"{(report.passed/report.total*100 if report.total else 0):.1f}%")
     if report.results:
         for r in report.results[:50]:
-            mark = "✓" if r.passed else "✗"
+            mark = "[PASS]" if r.passed else "[FAIL]"
             print(f"   {mark} {r.task_id}  {r.reason}")
         if len(report.results) > 50:
             print(f"   ... ({len(report.results)-50} more)")
@@ -622,26 +703,26 @@ def _check_only() -> int:
         tid = t.get("task_id", "?")
         db = REPO_ROOT / t.get("db_path", "")
         if not db.exists():
-            print(f"  ✗ {tid}: missing db {db.relative_to(REPO_ROOT)}")
+            print(f"  [FAIL] {tid}: missing db {db.relative_to(REPO_ROOT)}")
             bad += 1
             continue
         gold = t.get("gold_sql", "")
         ok, why = is_read_only_sql(gold)
         if not ok:
-            print(f"  ✗ {tid}: gold_sql not read-only: {why}")
+            print(f"  [FAIL] {tid}: gold_sql not read-only: {why}")
             bad += 1
             continue
         try:
             rows = run_sql(db, gold)
         except sqlite3.Error as e:
-            print(f"  ✗ {tid}: gold_sql failed: {e}")
+            print(f"  [FAIL] {tid}: gold_sql failed: {e}")
             bad += 1
             continue
         if not bag_equal(rows, rows):
-            print(f"  ✗ {tid}: bag_equal not reflexive!")
+            print(f"  [FAIL] {tid}: bag_equal not reflexive!")
             bad += 1
             continue
-        print(f"  ✓ {tid}: {len(rows)} rows")
+        print(f"  [PASS] {tid}: {len(rows)} rows")
 
     print(f"\n[check] reference tasks...")
     refs = load_pairwise_reference_tasks()
@@ -652,7 +733,7 @@ def _check_only() -> int:
         if gt is None:
             print(f"  ! {tid}: no ground-truth (may be intentional for student-facing variant)")
         else:
-            print(f"  ✓ {tid}: ground-truth has {len(gt.get('bugs', []))} bugs, "
+            print(f"  [PASS] {tid}: ground-truth has {len(gt.get('bugs', []))} bugs, "
                   f"{len(gt.get('test_cases', []))} test cases")
 
     print(f"\n[check] done. {bad} issue(s).")

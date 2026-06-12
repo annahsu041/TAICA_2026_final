@@ -25,4 +25,4 @@ default_model: gemma4
 # 請改成你本機 repo 的 absolute path。
 skills:
   external_dirs:
-    - /ABSOLUTE/PATH/TO/final-project-<github_id>/skills
+    - /ABSOLUTE/PATH/TO/final-project-annahsu041/skills

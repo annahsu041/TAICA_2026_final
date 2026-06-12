@@ -1,5 +1,5 @@
 ---
-name: code-author-GITHUBID
+name: code-author-annahsu041
 description: Implement a Python function from a natural-language task description, self-test, and emit the AIASE 2026 Pairwise Code Author contract.
 version: 0.1.0
 metadata:
@@ -25,26 +25,40 @@ When the user sends a JSON payload with `task_description`, `constraints` (entry
 Trigger example:
 
 ```
-/code-author-<your_github_id> {"task_id":"task_042",
+/code-author-annahsu041 {"task_id":"task_042",
   "task_description":"Implement merge_intervals(intervals): merge overlapping intervals, empty input returns [].",
   "constraints":{"entry_function":"merge_intervals","max_loc":500,"imports_forbidden":["os","sys"]}}
 ```
 
 ## Procedure
 
-1. **Parse** the task description; identify inputs, outputs, edge cases, and complexity targets.
-2. **Draft** a Python implementation defining `constraints.entry_function`. Keep code idiomatic; do not over-engineer.
-3. **Self-test** by running `python scripts/selftest.py` with the candidate code + constraints + a small set of edge inputs (empty list, single element, extremes). The script returns `{passed, failed, errors, sloc, import_violations}`.
-   - If any check fails: read the error, fix the code, retry (up to 3 rounds).
-4. **Emit** the contract by running `python scripts/run.py` with the final `{task_id, code, loc, self_test_results, rationale, confidence}` as argv JSON. Output the resulting fenced JSON block **unchanged**.
+**Complete this skill in exactly 3 terminal calls. Do NOT reason between calls.**
+
+1. **Write** a Python implementation of `constraints.entry_function` mentally (no intermediate files).
+
+2. **Selftest** — run exactly once with your code and 3–5 edge cases. Use key `sample_inputs` (not `test_cases`):
+
+   ```
+   python skills/code-author-annahsu041/scripts/selftest.py '{"code":"<your_code_as_one_line_with_\\n>","constraints":<constraints_json>,"sample_inputs":[{"input":[<arg1>],"expected":<expected>},...]}'
+   ```
+
+   Edge cases to always include: empty input (`[]` or `""`), single element, and the standard example from the description.
+
+3. **Emit immediately** — do NOT retry selftest even if some tests fail. Run:
+
+   ```
+   python skills/code-author-annahsu041/scripts/run.py '{"task_id":"<task_id>","code":"<your_code_as_one_line_with_\\n>","loc":<sloc_from_selftest>,"self_test_results":{"passed":<n>,"failed":<m>},"rationale":"<one_sentence>","confidence":<0.0-1.0>}'
+   ```
+
+   Output the resulting fenced JSON block **unchanged** as your final response.
 
 ## Pitfalls
 
-- **Missing empty-input handling** — the most common Pairwise failure. Always test `[]` / `""` / `0`.
-- **Off-by-one** in loops / slicing — test both endpoints (first, last) explicitly.
-- **Forbidden imports** — `os`, `sys`, `subprocess` etc. The harness will flag them; don't import anything not strictly needed.
-- **LoC limit** — `radon raw` counts source lines (excludes blank + pure-comment). The grader re-runs `radon` independently of your reported `loc`. Keep code lean.
-- **No network / no filesystem outside cwd** in sandbox (see spec §2.3). Don't read files, don't call APIs.
+- **Missing empty-input handling** — always test `[]` / `""` / `0`.
+- **Wrong selftest key** — selftest.py uses `sample_inputs`, NOT `test_cases`.
+- **Forbidden imports** — do not import `os`, `sys`, `subprocess` or anything in `imports_forbidden`.
+- **LoC limit** — `radon raw` counts source lines (excludes blank + pure-comment). Keep code lean.
+- **No intermediate files** — do not `printf` or write code to disk. Pass code directly as JSON string.
 
 ## Verification
 
@@ -56,3 +70,4 @@ The output of `scripts/run.py` is a single fenced ```json``` block with:
 - `self_test_results` (object with `passed` and `failed` counts at minimum)
 - `rationale` (string)
 - `confidence` (number in `[0.0, 1.0]`)
+
