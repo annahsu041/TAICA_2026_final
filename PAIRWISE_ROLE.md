@@ -1,3 +1,5 @@
+role: code-author
+skill_path: skills/code-author-annahsu041/
 roles:
   - role: code-author
     skill_path: skills/code-author-annahsu041/

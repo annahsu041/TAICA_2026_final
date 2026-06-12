@@ -165,7 +165,7 @@ def check_pairwise_role(rep: Report) -> None:
     clean_text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
     if "roles:" in clean_text:
         roles_found = re.findall(r"-\s*role:\s*(code-author|bug-hunter)\s*", clean_text)
-        paths_found = re.findall(r"skill_path:\s*(\S+)\s*", clean_text)
+        paths_found = re.findall(r"[ \t]+skill_path:\s*(\S+)\s*", clean_text)
         if len(roles_found) != 2 or len(paths_found) != 2:
             rep.add("pairwise-role:format", False, f"Expected 2 roles and 2 skill_paths. Found roles: {roles_found}, paths: {paths_found}")
             return
