@@ -31,7 +31,7 @@ Trigger example:
 3. **Immediately emit** the result by running this single command:
 
 ```
-python skills/text2sql-annahsu041/scripts/run.py '{"task_id":"<task_id>","sql":"<your_sql>","rationale":"<brief_reason>","confidence":0.85}'
+python scripts/run.py '{"task_id":"<task_id>","sql":"<your_sql>","rationale":"<brief_reason>","confidence":0.85}'
 ```
 
 Replace `<task_id>`, `<your_sql>`, and `<brief_reason>` with the actual values. This is the **only** terminal command you need to run — run it once and return the printed fenced JSON block unchanged as your final response.

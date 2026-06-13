@@ -39,7 +39,7 @@ Trigger example:
 2. **Selftest** — run exactly once with your code and 3–5 edge cases. Use key `sample_inputs` (not `test_cases`):
 
    ```
-   python skills/code-author-annahsu041/scripts/selftest.py '{"code":"<your_code_as_one_line_with_\\n>","constraints":<constraints_json>,"sample_inputs":[{"input":[<arg1>],"expected":<expected>},...]}'
+   python scripts/selftest.py '{"code":"<your_code_as_one_line_with_\\n>","constraints":<constraints_json>,"sample_inputs":[{"input":[<arg1>],"expected":<expected>},...]}'
    ```
 
    Edge cases to always include: empty input (`[]` or `""`), single element, and the standard example from the description.
@@ -47,7 +47,7 @@ Trigger example:
 3. **Emit immediately** — do NOT retry selftest even if some tests fail. Run:
 
    ```
-   python skills/code-author-annahsu041/scripts/run.py '{"task_id":"<task_id>","code":"<your_code_as_one_line_with_\\n>","loc":<sloc_from_selftest>,"self_test_results":{"passed":<n>,"failed":<m>},"rationale":"<one_sentence>","confidence":<0.0-1.0>}'
+   python scripts/run.py '{"task_id":"<task_id>","code":"<your_code_as_one_line_with_\\n>","loc":<sloc_from_selftest>,"self_test_results":{"passed":<n>,"failed":<m>},"rationale":"<one_sentence>","confidence":<0.0-1.0>}'
    ```
 
    Output the resulting fenced JSON block **unchanged** as your final response.

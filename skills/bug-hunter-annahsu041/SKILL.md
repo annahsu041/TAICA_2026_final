@@ -44,7 +44,7 @@ Write the received `code` to `_bh_code.py`, and the probe inputs (derived from `
 Run the analysis tool specifying the entry function:
 
 ```powershell
-python skills/bug-hunter-annahsu041/scripts/analyze.py --code-file _bh_code.py --entry <fn_name> --edge-inputs-file _bh_edge_inputs.json
+python scripts/analyze.py --code-file _bh_code.py --entry <fn_name> --edge-inputs-file _bh_edge_inputs.json
 ```
 
 ### Call 3 — Emit the final structured report via run.py
@@ -52,7 +52,7 @@ python skills/bug-hunter-annahsu041/scripts/analyze.py --code-file _bh_code.py -
 Analyze the output of `analyze.py`, determine the verdict and bugs. Write the final report JSON to `_bh_report.json` (prefer file tools), and run `run.py`:
 
 ```powershell
-python skills/bug-hunter-annahsu041/scripts/run.py --file _bh_report.json
+python scripts/run.py --file _bh_report.json
 ```
 
 **Bug Type Guide:**
