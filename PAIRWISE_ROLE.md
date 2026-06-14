@@ -1,3 +1,6 @@
+role: code-author
+skill_path: skills/code-author-annahsu041/
+
 # PAIRWISE_ROLE 宣告
 
 > Pairwise Track：**兩個角色（Code Author + Bug Hunter）都要實作並提交**。
