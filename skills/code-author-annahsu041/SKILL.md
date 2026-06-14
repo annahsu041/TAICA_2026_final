@@ -10,9 +10,6 @@ metadata:
 
 # Code Author Skill (Pairwise Track)
 
-> **TODO for student**: rename folder + frontmatter `name` to include your github_id;
-> fill in the LLM-side planning in the Procedure; strengthen the harness in `scripts/`.
-
 ## When to Use
 
 When the user sends a JSON payload with `task_description`, `constraints` (entry_function, max_loc, imports_forbidden), and `task_id`. The skill must produce a Python implementation that:

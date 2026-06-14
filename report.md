@@ -69,6 +69,12 @@
 
 ---
 
+## 4. 分工說明
+
+本專案為單人組（一人一組），不適用規格書 §4.4 第 4 項「兩人組分工說明」。
+
+---
+
 ## 5. 引用說明
 
 * **來源：** NousResearch/hermes-agent 官方 Repository (https://github.com/NousResearch/hermes-agent)

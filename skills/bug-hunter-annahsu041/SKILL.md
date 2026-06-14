@@ -80,7 +80,7 @@ Output the fenced JSON block from `run.py` **unchanged** as your final response.
 - **Wrong type** — must be one of: `off_by_one` / `null_deref` / `type_error` / `logic_error` / `edge_case` / `api_misuse` / `inefficient` / `unhandled_input`.
 - **Wrong severity** — must be one of: `critical` / `high` / `medium` / `low`.
 - **Wrong line numbers** — 1-indexed; use `bad_line` from crash probes or find the condition line for missing features.
-- **Wrong path** — always use `skills/bug-hunter-annahsu041/scripts/` prefix.
+- **Wrong path** — scripts are invoked relative to this skill's own directory (e.g. `python scripts/analyze.py ...`, `python scripts/run.py ...`), as in the Procedure above. Do **not** prefix with `skills/bug-hunter-annahsu041/` — that path does not exist relative to the skill's working directory.
 
 ## Verification
 
